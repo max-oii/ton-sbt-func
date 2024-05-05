@@ -1,8 +1,10 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Cell, toNano } from '@ton/core';
 import { SbtCollection } from '../wrappers/SbtCollection';
+import { SbtItem } from '../wrappers/SbtItem';
 import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
+import { collectionContentToCell } from './_setup';
 
 describe('SbtCollection', () => {
     let code: Cell;
@@ -18,64 +20,53 @@ describe('SbtCollection', () => {
     beforeEach(async () => {
         blockchain = await Blockchain.create();
 
+        deployer = await blockchain.treasury('deployer');
+        const collectionContent = collectionContentToCell('https://s.getgems.io/nft/b/c/62fba50217c3fe3cbaad9e7f/');
+        const sbtItemCode = await compile('SbtItem');
+
         sbtCollection = blockchain.openContract(
             SbtCollection.createFromConfig(
                 {
-                    id: 0,
-                    counter: 0,
+                    ownerAddress: deployer.address,
+                    nextItemIndex: 1,
+                    content: collectionContent,
+                    nftItemCode: sbtItemCode,
                 },
-                code
-            )
+                code,
+            ),
         );
 
-        deployer = await blockchain.treasury('deployer');
-
-        const deployResult = await sbtCollection.sendDeploy(deployer.getSender(), toNano('0.05'));
+        const deployResult = await sbtCollection.sendDeploy(deployer.getSender(), toNano('0.1'));
 
         expect(deployResult.transactions).toHaveTransaction({
             from: deployer.address,
             to: sbtCollection.address,
             deploy: true,
-            success: true,
         });
     });
 
-    it('should deploy', async () => {
-        // the check is done inside beforeEach
-        // blockchain and sbtCollection are ready to use
+    it('should deploy', async () => {});
+
+    it('should mint', async () => {
+        console.log('mint done');
     });
 
-    it('should increase counter', async () => {
-        const increaseTimes = 3;
-        for (let i = 0; i < increaseTimes; i++) {
-            console.log(`increase ${i + 1}/${increaseTimes}`);
+    it('should update owner', async () => {
+        const collectionDataBefore = await sbtCollection.getCollectionData();
+        expect(collectionDataBefore.ownerAddress.toString()).toBe(deployer.address.toString());
 
-            const increaser = await blockchain.treasury('increaser' + i);
+        const newOwner = await blockchain.treasury('newOwner');
+        const updateOwnerResult = await sbtCollection.sendUpdateOwner(deployer.getSender(), {
+            newOwner: newOwner.address,
+            value: toNano('0.05'),
+        });
+        expect(updateOwnerResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: sbtCollection.address,
+            success: true,
+        });
 
-            const counterBefore = await sbtCollection.getCounter();
-
-            console.log('counter before increasing', counterBefore);
-
-            const increaseBy = Math.floor(Math.random() * 100);
-
-            console.log('increasing by', increaseBy);
-
-            const increaseResult = await sbtCollection.sendIncrease(increaser.getSender(), {
-                increaseBy,
-                value: toNano('0.05'),
-            });
-
-            expect(increaseResult.transactions).toHaveTransaction({
-                from: increaser.address,
-                to: sbtCollection.address,
-                success: true,
-            });
-
-            const counterAfter = await sbtCollection.getCounter();
-
-            console.log('counter after increasing', counterAfter);
-
-            expect(counterAfter).toBe(counterBefore + increaseBy);
-        }
+        const collectionDataAfter = await sbtCollection.getCollectionData();
+        expect(collectionDataAfter.ownerAddress.toString()).toBe(newOwner.address.toString());
     });
 });

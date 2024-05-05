@@ -1,20 +1,31 @@
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
 
 export type SbtCollectionConfig = {
-    id: number;
-    counter: number;
+    ownerAddress: Address;
+    nextItemIndex: number;
+    content: Cell;
+    nftItemCode: Cell;
 };
 
 export function sbtCollectionConfigToCell(config: SbtCollectionConfig): Cell {
-    return beginCell().storeUint(config.id, 32).storeUint(config.counter, 32).endCell();
+    return beginCell()
+        .storeAddress(config.ownerAddress)
+        .storeUint(config.nextItemIndex, 64)
+        .storeRef(config.content)
+        .storeRef(config.nftItemCode)
+        .endCell();
 }
 
 export const Opcodes = {
-    increase: 0x7e8764ef,
+    mint: 0xecad15c4,
+    updateOwner: 0xcd5aacf3,
 };
 
 export class SbtCollection implements Contract {
-    constructor(readonly address: Address, readonly init?: { code: Cell; data: Cell }) {}
+    constructor(
+        readonly address: Address,
+        readonly init?: { code: Cell; data: Cell },
+    ) {}
 
     static createFromAddress(address: Address) {
         return new SbtCollection(address);
@@ -34,33 +45,71 @@ export class SbtCollection implements Contract {
         });
     }
 
-    async sendIncrease(
+    async sendMint(
         provider: ContractProvider,
         via: Sender,
         opts: {
-            increaseBy: number;
+            nftContent: Cell;
             value: bigint;
             queryID?: number;
-        }
+        },
     ) {
         await provider.internal(via, {
             value: opts.value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell()
-                .storeUint(Opcodes.increase, 32)
+                .storeUint(Opcodes.mint, 32)
                 .storeUint(opts.queryID ?? 0, 64)
-                .storeUint(opts.increaseBy, 32)
+                .storeRef(opts.nftContent)
                 .endCell(),
         });
     }
 
-    async getCounter(provider: ContractProvider) {
-        const result = await provider.get('get_counter', []);
-        return result.stack.readNumber();
+    async sendUpdateOwner(
+        provider: ContractProvider,
+        via: Sender,
+        opts: {
+            newOwner: Address;
+            value: bigint;
+            queryID?: number;
+        },
+    ) {
+        await provider.internal(via, {
+            value: opts.value,
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell()
+                .storeUint(Opcodes.updateOwner, 32)
+                .storeUint(opts.queryID ?? 0, 64)
+                .storeAddress(opts.newOwner)
+                .endCell(),
+        });
     }
 
-    async getID(provider: ContractProvider) {
-        const result = await provider.get('get_id', []);
-        return result.stack.readNumber();
+    async getCollectionData(provider: ContractProvider) {
+        const result = await provider.get('get_collection_data', []);
+        return {
+            nextItemIndex: result.stack.readBigNumber(),
+            content: result.stack.readCell(),
+            ownerAddress: result.stack.readAddress(),
+        };
+    }
+
+    async getNftAddressByIndex(provider: ContractProvider, index: bigint) {
+        const result = await provider.get('get_nft_address_by_index', [{ type: 'int', value: index }]);
+        return result.stack.readAddress();
+    }
+
+    async getNftContent(provider: ContractProvider, index: bigint, individualContent: Cell): Promise<Cell> {
+        const result = await provider.get('get_nft_content', [
+            {
+                type: 'int',
+                value: index,
+            },
+            {
+                type: 'cell',
+                cell: individualContent,
+            },
+        ]);
+        return result.stack.readCell();
     }
 }

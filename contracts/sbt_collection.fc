@@ -44,7 +44,7 @@
 
     throw_unless(401, equal_slices(sender_address, owner_address));
 
-    if (op == 1) { ;; deploy new nft
+    if (op == op::mint) { ;; deploy new nft
       throw_unless(402, next_item_index <= total_supply);
 
       deploy_nft_item(next_item_index, nft_item_code, in_msg_body~load_coins(), in_msg_body~load_ref());
@@ -52,7 +52,7 @@
       save_data(owner_address, next_item_index, content, nft_item_code);
       return ();
     }
-    if (op == 2) { ;; change owner
+    if (op == op::update_owner) { ;; change owner
       slice new_owner = in_msg_body~load_msg_addr();
       save_data(new_owner, next_item_index, content, nft_item_code);
       return ();
