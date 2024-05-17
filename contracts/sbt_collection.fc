@@ -1,5 +1,5 @@
 #include "imports/stdlib.fc";
-#include "./op-codes.fc";
+#include "./op_codes.fc";
 #include "./constants.fc";
 #include "./utils.fc";
 
